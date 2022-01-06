@@ -1,0 +1,41 @@
+---
+- name: Master playbook
+  hosts: all
+  gather_facts: yes
+  become: yes
+  vars:
+    rv_vault_endpoint:
+      host: vault
+      domain: sourceshift.org
+    rv_vault_user: vault
+    rv_vault_data_directory: /vault
+    rv_godaddy_api_key: "{{ lookup('env', 'GODADDY_API_KEY') }}"
+    rv_godaddy_api_secret: "{{ lookup('env', 'GODADDY_API_SECRET') }}"
+    #rv_tls_vault_uri: https://vault.sourceshift.org:8200/v1/pki/issue/web
+    rv_tls_vault_token: "{{ lookup('env', 'VAULT_TOKEN') }}"
+    rv_sshd_hardening_ssh_security_password_authentication: true
+    rv_sshd_hardening_ssh_security_permit_root_login: true
+    pv_vault_post_access_api_addr: https://localhost:8200
+    pv_vault_post_access_initialize: true
+    pv_vault_post_access_initialize_share: 5
+    pv_vault_post_access_initialize_threshold: 3
+    pv_vault_post_access_setup_auto_unseal_cron: true
+    pv_vault_post_access_setup_auto_unseal_cron_script_path: "{{ rv_vault_data_directory }}/unseal_corn.sh"
+    pv_vault_post_access_setup_unseal_keys:
+      [
+        "bec1d8b5f7a065594221ff4a4588bef467348641e60b2d9fafdb61f91d03c5f1f1",
+        "50b639bed55c24454f0fa591a9fc94663a9e03e472f737ec0bf91005567ac62ac9",
+        "2af21da63d589e9eb5792b456466d43e6c1294d38c37e913f3270b3333090354d8",
+        "00f84961c3112357de2db30e3796ce9ef924df6364062189849fca96c1fedabe91",
+        "86665200c7b4e063df678cf7bdb3de13691c9974e2030b7ed49a49b1394aec29e2",
+      ]
+    pv_vault_post_access_setup_priviledged_token: "s.2WTJQp2yv5WfRaIDCg20Id3L"
+  tasks:
+    - name: Prerequisites
+      include_tasks: prerequisite.yml
+
+    - name: Install
+      include_tasks: install.yml
+
+    - name: Post Install
+      include_tasks: post-install.yml

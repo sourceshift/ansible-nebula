@@ -1,0 +1,31 @@
+---
+- name: Upgrade and Install basic services
+  include_role:
+    name: linux-patching
+  vars:
+    rv_linux_patching_upgrade_existing_packages: true
+
+- name: Set Basic SSHD Configuration
+  include_role:
+    name: ssh-hardening
+
+- name: Create User for Vault
+  include_role:
+    name: user-add
+  vars:
+    rv_user_add_username: "{{ rv_vault_user }}"
+    rv_user_add_user_nopasswd_commands: ["ALL"]
+
+- name: Install Vault | Install Docker
+  include_role:
+    name: docker
+  vars:
+    docker_users: ["{{ rv_vault_user }}"]
+    docker_package_state: present
+
+- name: Install Vault | Install docker python package
+  become: yes
+  become_user: "{{  rv_vault_user  }}"
+  pip:
+    name: docker
+    extra_args: --user

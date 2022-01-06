@@ -1,0 +1,71 @@
+---
+- name: Get Vault Health Status
+  uri:
+    url: "{{ pv_vault_post_access_api_addr }}/v1/sys/health"
+    method: GET
+    return_content: yes
+    body_format: json
+    validate_certs: false
+    status_code: [501, 503, 200]
+  register: pv_vault_health_status
+  retries: 3
+  delay: 5
+  until:
+    - pv_vault_health_status.status in [501, 503, 200]
+
+- name: newly Initialize vault
+  when:
+    - pv_vault_post_access_initialize
+    - not pv_vault_health_status.json.initialized
+  block:
+    - name: Initialize vault
+      uri:
+        url: "{{ pv_vault_post_access_api_addr }}/v1/sys/init"
+        method: POST
+        return_content: yes
+        body_format: json
+        validate_certs: false
+        body:
+          secret_shares: "{{  pv_vault_post_access_initialize_share  }}"
+          secret_threshold: "{{  pv_vault_post_access_initialize_threshold  }}"
+        status_code: [200]
+      register: pv_vault_init_status
+
+    - name: Get Vault Root Token
+      set_fact:
+        pv_vault_post_access_setup_unseal_keys: "{{ pv_vault_init_status.json.keys }}"
+        pv_vault_post_access_setup_priviledged_token: "{{ pv_vault_init_status.json.root_token }}"
+
+- name: Setup unseal cron
+  when: pv_vault_post_access_setup_auto_unseal_cron
+  block:
+    - name: Creating cron script for unseal
+      copy:
+        owner: "{{  rv_vault_user  }}"
+        group: "{{  rv_vault_user  }}"
+        mode: "0755"
+        dest: "{{  pv_vault_post_access_setup_auto_unseal_cron_script_path  }}"
+        content: |
+          #!/bin/bash
+          set -e
+          echo "Unseal Vault Cron Job"
+          declare -a arr=( {{ pv_vault_init_status.json['keys'] | join(' ') }} )
+          vault_seal_status=$(curl -sSk https://localhost:8200/v1/sys/health | jq .sealed -r)
+          if [ "$vault_seal_status" == "true" ]; then
+              for i in "${arr[@]}"
+              do
+                  curl -sSLkf -X PUT https://localhost:8200/v1/sys/unseal -d '{"key": "'$i'"}'
+              done
+          else
+              echo "Vault is already unsealed"
+          fi
+
+    - name: Setup Crop job
+      cron:
+        user: "{{  rv_vault_user  }}"
+        name: "Unseal Vault"
+        minute: "0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31,32,33,34,35,36,37,38,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54,55,56,57,58,59"
+        job: "{{  pv_vault_post_access_setup_auto_unseal_cron_script_path  }}"
+
+
+- debug: var=pv_vault_post_access_setup_priviledged_token

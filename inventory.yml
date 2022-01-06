@@ -1,0 +1,14 @@
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: /usr/bin/python
+    host:
+      ansible_python_interpreter: /usr/bin/python
+      ansible_connection: ssh
+      ansible_host: 127.0.0.1
+      ansible_port: 22
+      ansible_password: password
+      ansible_sudo_pass: "{{  ansible_password  }}"
+      ansible_user: mradmin
+      #ansible_ssh_private_key_file: ~/.ssh/id_rsa

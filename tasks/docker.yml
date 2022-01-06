@@ -1,0 +1,13 @@
+---
+- name: Master playbook
+  hosts: all
+  gather_facts: yes
+  become: yes
+  tasks:
+    - name: Install Docker
+      include_role:
+        name: docker
+      vars:
+      #rv_docker_users: []
+      tags:
+        - always

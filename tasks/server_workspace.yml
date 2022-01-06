@@ -1,0 +1,11 @@
+---
+- name: Master playbook
+  hosts: all
+  gather_facts: yes
+  become: yes
+  tasks:
+    - name: Install dev workspace apps
+      include_role:
+        name: server_workspace
+      tags:
+        - always

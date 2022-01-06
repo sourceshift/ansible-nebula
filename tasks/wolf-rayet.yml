@@ -1,0 +1,120 @@
+- name: Master playbook
+  hosts: localhost
+  gather_facts: true
+  become: false
+  vars_prompt:
+  vars:
+    var_wolf_rayet_terraform_project_path: "/tmp/wolf-rayet"
+    var_linode_json_token_file: "/tmp/.linode-token.json"
+  roles:
+  tasks:
+    - name: Git clone the wolf wayet
+      git:
+        repo: "https://github.com/sourceshift/wolf-rayet.git"
+        depth: 1
+        dest: "{{ var_wolf_rayet_terraform_project_path }}"
+        clone: yes
+
+    - name: Get Linode Token from environment
+      set_fact:
+        var_linode_token: "{{ lookup('file', var_linode_json_token_file ) | from_json | community.general.json_query('LINODE_TOKEN') }}"
+        var_wolf_rayet_terraform_backend_config_secret_file: "{{ var_wolf_rayet_terraform_project_path }}/.backend-secret.json"
+        var_wolf_rayet_terraform_backend_config_file: "{{ var_wolf_rayet_terraform_project_path }}/backend.json"
+
+    - name: Get Backend Config
+      set_fact:
+        var_wolf_rayet_terraform_backend_config: "{{ lookup('file', var_wolf_rayet_terraform_backend_config_file ) | from_json }}"
+    
+    - debug:
+        msg: "{{  var_wolf_rayet_terraform_backend_config.bucket  }}"
+
+    - name: "Create S3 Backend for Terraform in Linode Bucket: {{ var_wolf_rayet_terraform_backend_config.bucket }} Endpoint: {{ var_wolf_rayet_terraform_backend_config.endpoint }}"
+      uri:
+        url: "https://api.linode.com/v4/object-storage/buckets"
+        method: POST
+        body_format: json
+        headers:
+          Authorization: "Bearer {{ var_linode_token }}"
+        body:
+          label: "{{ var_wolf_rayet_terraform_backend_config.bucket }}"
+          cluster: "{{ var_wolf_rayet_terraform_backend_config.region }}"
+          cors_enabled: true
+          acl: private
+        return_content: yes
+        status_code: 200
+
+    - name: Create Object Storage Key and Run Terraform
+      block:
+        - name: "Generate Temporary access key label for terraform S3 backend Bucket: {{ var_wolf_rayet_terraform_backend_config.bucket }} Endpoint: {{ var_wolf_rayet_terraform_backend_config.endpoint }}"
+          set_fact:
+            var_object_storage_bucket_key_label: "{{  var_wolf_rayet_terraform_backend_config.bucket  }}{{  var_wolf_rayet_terraform_backend_config.region  }}{{  ansible_date_time.epoch  }}"
+
+        - name: Generate Temporary access key for terraform S3 backend with label {{ var_object_storage_bucket_key_label }}
+          uri:
+            url: https://api.linode.com/v4/object-storage/keys
+            method: POST
+            body_format: json
+            headers:
+              Authorization: "Bearer {{ var_linode_token }}"
+            body:
+              label: "{{ var_object_storage_bucket_key_label }}"
+              bucket_access:
+                - bucket_name: "{{  var_wolf_rayet_terraform_backend_config.bucket  }}"
+                  cluster: "{{  var_wolf_rayet_terraform_backend_config.region  }}"
+                  permissions: read_write
+            return_content: yes
+            status_code: 200
+          register: var_object_storage_bucket_key_respose
+
+        - name: Create terraform backend config secret file {{  var_wolf_rayet_terraform_backend_config_secret_file  }}
+          copy:
+            content: |
+              {
+                "access_key": "{{ var_object_storage_bucket_key_respose.json.access_key }}",
+                "secret_key": "{{ var_object_storage_bucket_key_respose.json.secret_key }}"
+              }
+            dest: "{{  var_wolf_rayet_terraform_backend_config_secret_file  }}"
+
+        - name: Terraform Init
+          shell: "terraform init -backend-config={{  var_wolf_rayet_terraform_backend_config_secret_file  }} -backend-config={{  var_wolf_rayet_terraform_backend_config_file  }} -upgrade -reconfigure"
+          args:
+            chdir: "{{  var_wolf_rayet_terraform_project_path  }}"
+          register: var_terraform_init_response
+
+        - debug: var=var_terraform_init_response
+
+        - name: Terraform Apply
+          terraform:
+            project_path: "{{ var_wolf_rayet_terraform_project_path }}"
+            state: present
+            force_init: true
+            init_reconfigure: true
+            backend_config_files:
+              - "{{ var_wolf_rayet_terraform_backend_config_secret_file  }}"
+              - "{{ var_wolf_rayet_terraform_backend_config_file }}"
+            variables_files:
+              - "{{ var_wolf_rayet_terraform_project_path }}/config.json"
+              - "{{  var_linode_json_token_file  }}"
+          register: var_terraform_apply_result
+          ignore_errors: true
+
+        - debug: var=var_terraform_apply_result
+
+      always:
+        - name: Delete terraform init state secret
+          file:
+            state: absent
+            path: "{{ var_wolf_rayet_terraform_backend_config_secret_file  }}"
+          ignore_errors: yes
+          when: false
+
+        - name: Delete Linode Object Storage Key
+          uri:
+            url: "https://api.linode.com/v4/object-storage/keys/{{ var_object_storage_bucket_key_respose.json.id }}"
+            method: DELETE
+            body_format: json
+            body: {}
+            headers:
+              Authorization: "Bearer {{ var_linode_token }}"
+            status_code: 200
+          ignore_errors: yes

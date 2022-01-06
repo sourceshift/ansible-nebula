@@ -1,0 +1,14 @@
+---
+- name: Master playbook
+  hosts: all
+  gather_facts: yes
+  become: yes
+  tasks:
+    - name: SSHD Hardening
+      include_role:
+        name: sshd_hardening
+      vars:
+        rv_sshd_hardening_ssh_security_password_authentication: true
+        rv_sshd_hardening_ssh_security_permit_root_login: true
+      tags:
+        - always

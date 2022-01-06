@@ -127,3 +127,10 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.idea
+tmp*
+.tmp
+.linode_token
+roles/*
+!roles/requirements.yml

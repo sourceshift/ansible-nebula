@@ -1,0 +1,16 @@
+---
+- name: Master playbook
+  hosts: all
+  gather_facts: yes
+  become: yes
+  vars_prompt:
+  tasks:
+    - name: Patch linux OS
+      include_role:
+        name: linux_patching
+      vars:
+        rv_linux_patching_upgrade_existing_packages: true
+      #  rv_linux_patching_hostname:
+      #  rv_linux_patching_hostdomain:
+      tags:
+        - always
